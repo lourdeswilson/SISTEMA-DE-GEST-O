@@ -1,22 +1,24 @@
-const { createClient } = require('@supabase/supabase-js');
+const { Pool } = require('pg');
 const dotenv = require('dotenv');
 const path = require('path');
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || 'sistema_gestao',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD,
+});
 
 const connectDatabase = async () => {
   try {
-    const { error } = await supabase.from('users').select('count').limit(1);
-    if (error && error.code !== 'PGRST116') throw error;
-    console.log('✅ Supabase conectado com sucesso!');
+    await pool.query('SELECT 1');
+    console.log('✅ PostgreSQL conectado com sucesso!');
   } catch (error) {
-    console.error('❌ Erro ao conectar Supabase:', error.message);
+    console.error('❌ Erro ao conectar PostgreSQL:', error.message);
   }
 };
 
-module.exports = { supabase, connectDatabase };
+module.exports = { pool, connectDatabase };

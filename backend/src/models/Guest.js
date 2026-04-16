@@ -1,54 +1,42 @@
-const mongoose = require('mongoose');
+const { pool } = require('../config/database');
 
-const guestSchema = new mongoose.Schema(
-  {
-    firstName: {
-      type: String,
-      required: [true, 'Nome é obrigatório'],
-      trim: true,
-    },
-    lastName: {
-      type: String,
-      required: [true, 'Apelido é obrigatório'],
-      trim: true,
-    },
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
-    },
-    documentId: {
-      type: String,
-      required: [true, 'Documento de identificação é obrigatório'],
-      trim: true,
-    },
-    room: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Room',
-    },
-    checkIn: {
-      type: Date,
-    },
-    checkOut: {
-      type: Date,
-    },
-    status: {
-      type: String,
-      enum: ['reservado', 'checked-in', 'checked-out'],
-      default: 'reservado',
-    },
-    notes: {
-      type: String,
-      default: '',
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
+const getAllGuests = async () => {
+  const result = await pool.query(
+    `SELECT g.*, r.number as room_number, r.type as room_type
+     FROM guests g LEFT JOIN rooms r ON g.room_id = r.id
+     ORDER BY g.created_at DESC`
+  );
+  return result.rows;
+};
 
-module.exports = mongoose.model('Guest', guestSchema);
+const getGuestById = async (id) => {
+  const result = await pool.query(
+    `SELECT g.*, r.number as room_number FROM guests g
+     LEFT JOIN rooms r ON g.room_id = r.id WHERE g.id = $1`,
+    [id]
+  );
+  return result.rows[0];
+};
+
+const createGuest = async (data) => {
+  const { first_name, last_name, email, phone, document_id, nationality, room_id, check_in, check_out, notes } = data;
+  const result = await pool.query(
+    `INSERT INTO guests (first_name, last_name, email, phone, document_id, nationality, room_id, check_in, check_out, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [first_name, last_name, email, phone, document_id, nationality, room_id, check_in, check_out, notes]
+  );
+  return result.rows[0];
+};
+
+const updateGuest = async (id, fields) => {
+  const keys = Object.keys(fields);
+  const values = Object.values(fields);
+  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const result = await pool.query(
+    `UPDATE guests SET ${setClause}, updated_at = NOW() WHERE id = $${keys.length + 1} RETURNING *`,
+    [...values, id]
+  );
+  return result.rows[0];
+};
+
+module.exports = { getAllGuests, getGuestById, createGuest, updateGuest };

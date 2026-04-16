@@ -1,50 +1,38 @@
-const mongoose = require('mongoose');
+const { pool } = require('../config/database');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, 'Nome é obrigatório'],
-      trim: true,
-    },
-    email: {
-      type: String,
-      required: [true, 'Email é obrigatório'],
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    password: {
-      type: String,
-      required: [true, 'Password é obrigatória'],
-      minlength: [6, 'Password deve ter pelo menos 6 caracteres'],
-    },
-    role: {
-      type: String,
-      enum: ['admin', 'rh', 'recepcao', 'limpeza', 'manutencao'],
-      required: [true, 'Perfil é obrigatório'],
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-  },
-  {
-    timestamps: true, // cria automaticamente createdAt e updatedAt
-  }
-);
-
-// Antes de guardar, encripta a password automaticamente
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
-
-// Método para verificar password no login
-userSchema.methods.comparePassword = async function (candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+const createUser = async (name, email, password, role) => {
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const result = await pool.query(
+    `INSERT INTO users (name, email, password, role)
+     VALUES ($1, $2, $3, $4) RETURNING id, name, email, role, is_active, created_at`,
+    [name, email, hashedPassword, role]
+  );
+  return result.rows[0];
 };
 
-module.exports = mongoose.model('User', userSchema);
+const findUserByEmail = async (email) => {
+  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  return result.rows[0];
+};
+
+const findUserById = async (id) => {
+  const result = await pool.query(
+    'SELECT id, name, email, role, is_active, created_at FROM users WHERE id = $1',
+    [id]
+  );
+  return result.rows[0];
+};
+
+const getAllUsers = async () => {
+  const result = await pool.query(
+    'SELECT id, name, email, role, is_active, created_at FROM users ORDER BY created_at DESC'
+  );
+  return result.rows;
+};
+
+const comparePassword = async (candidatePassword, hashedPassword) => {
+  return await bcrypt.compare(candidatePassword, hashedPassword);
+};
+
+module.exports = { createUser, findUserByEmail, findUserById, getAllUsers, comparePassword };

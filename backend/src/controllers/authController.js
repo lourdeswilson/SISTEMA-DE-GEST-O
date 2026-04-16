@@ -1,79 +1,33 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { supabase } = require('../config/database');
+const { createUser, findUserByEmail, comparePassword } = require('../models/User');
 
-// Gerar token JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '8h',
-  });
-};
-
-// LOGIN
-const login = async (req, res) => {
+const register = async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // 1. Verificar se email e password foram enviados
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email e password são obrigatórios.',
-      });
-    }
-
-    // 2. Procurar utilizador pelo email
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .single();
-
-    if (error || !user || !user.is_active) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciais inválidas.',
-      });
-    }
-
-    // 3. Verificar password
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciais inválidas.',
-      });
-    }
-
-    // 4. Gerar token e responder
-    const token = generateToken(user.id);
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-    });
+    const { name, email, password, role } = req.body;
+    const existing = await findUserByEmail(email);
+    if (existing) return res.status(400).json({ success: false, message: 'Email já existe' });
+    const user = await createUser(name, email, password, role);
+    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.status(201).json({ success: true, token, user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erro no servidor.',
-      error: error.message,
-    });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
-// VER PERFIL DO UTILIZADOR LOGADO
-const getMe = async (req, res) => {
-  res.status(200).json({
-    success: true,
-    user: req.user,
-  });
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await findUserByEmail(email);
+    if (!user) return res.status(401).json({ success: false, message: 'Email ou password incorrectos' });
+    const isMatch = await comparePassword(password, user.password);
+    if (!isMatch) return res.status(401).json({ success: false, message: 'Email ou password incorrectos' });
+    if (!user.is_active) return res.status(401).json({ success: false, message: 'Conta desactivada' });
+    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ success: true, token, user: userWithoutPassword });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
-module.exports = { login, getMe };
+module.exports = { register, login };
